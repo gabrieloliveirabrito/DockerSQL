@@ -21,5 +21,8 @@ RUN chown -R 10001:10001 /var/opt/mssql
 # Switch back to non-root user
 USER mssql
 
+# Put the init.sql to change password and disable check policy
+COPY init.sql /docker-entrypoint-initdb.d/
+
 # Expose the SQL Server port
 EXPOSE 1433

@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  mssql:
+    build:
+      context: .
+      dockerfile: DockerFile
+      args:
+        MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+    env_file:
+      - .env
+    user: root
+    container_name: mssql_server
+    restart: unless-stopped
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./Data:/var/opt/mssql/data
+      - ./Backup:/var/opt/mssql/backup
+      - ./Log:/var/opt/mssql/log
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" || exit 1
+      interval: 30s
+      timeout: 30s
+      retries: 3

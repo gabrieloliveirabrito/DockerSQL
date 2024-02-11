@@ -1,0 +1,25 @@
+# Use the official Microsoft SQL Server 2019 image
+FROM mcr.microsoft.com/mssql/server:2019-latest
+
+# Receive args from compose
+ARG ACCEPT_EULA
+ARG MSSQL_SA_PASSWORD
+
+# Set the environment variables
+ENV ACCEPT_EULA=${ACCEPT_EULA}
+ENV MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD}
+
+# Create directory for data, backups, and logs
+RUN mkdir -p /var/opt/mssql/data /var/opt/mssql/backup /var/opt/mssql/log
+
+# Change the user to run sudo commands
+USER root
+
+# Change ownership of directories
+RUN chown -R 10001:10001 /var/opt/mssql
+
+# Switch back to non-root user
+USER mssql
+
+# Expose the SQL Server port
+EXPOSE 1433

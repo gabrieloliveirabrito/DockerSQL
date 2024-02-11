@@ -1,0 +1,4 @@
+# Ignorar pastas Backup, Log e Data
+Backup/
+Log/
+Data/

@@ -17,15 +17,7 @@ CREATE TABLE #BackupList
 INSERT INTO #BackupList
     (Filename)
 VALUES
-    ('/var/opt/mssql/backup/Db_Management_20240209.bak'),
-    ('/var/opt/mssql/backup/Db_Tank36_BR_20240209.bak'),
-    ('/var/opt/mssql/backup/Db_Tank36_EN_20240209.bak'),
-    ('/var/opt/mssql/backup/Db_Tank_BR_20240209.bak'),
-    ('/var/opt/mssql/backup/Db_Tank_EN_20240209.bak'),
-    ('/var/opt/mssql/backup/Db_Web_20240209.bak'),
-    ('/var/opt/mssql/backup/Xttdenc.Database.CharGame_20240209.bak'),
-    ('/var/opt/mssql/backup/Xttdenc.Database.Game_20240209.bak'),
-    ('/var/opt/mssql/backup/Xttdenc.Database.Web_20240209.bak');
+    ('/var/opt/mssql/backup/Db_Management_20240209.bak');
 
 CREATE TABLE #FileDetails
 (

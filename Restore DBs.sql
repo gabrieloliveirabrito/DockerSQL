@@ -1,11 +1,18 @@
 USE master;
 GO
 
-DECLARE @BackupFolder NVARCHAR(4000) = '/var/opt/mssql/backup/';
-DECLARE @DataFolder NVARCHAR(4000) = '/var/opt/mssql/data/';
+-- Define os diretórios de backup e de dados
+DECLARE @BackupFolder NVARCHAR(4000) = 'D:\SQL Server\Backup\';
+DECLARE @DataFolder NVARCHAR(4000) = 'D:\SQL Server\Data\';
 
--- Lista de arquivos de backup
-CREATE TABLE #BackupList
+/*
+	Se estiver em um container docker, utilize as pastas abaixo:
+	DECLARE @BackupFolder NVARCHAR(4000) = '/var/opt/mssql/backup/';
+	DECLARE @DataFolder NVARCHAR(4000) = '/var/opt/mssql/data/';
+*/
+
+-- Tabela para armazenar a lista de arquivos de backup e informações relacionadas
+DECLARE @BackupList TABLE
 (
     Filename NVARCHAR(4000) NOT NULL,
     DatabaseName NVARCHAR(128) NULL,
@@ -14,12 +21,15 @@ CREATE TABLE #BackupList
     LogName NVARCHAR(128) NULL,
     LogPhysical NVARCHAR(4000) NULL
 );
-INSERT INTO #BackupList
+
+-- Insere os arquivos de backup na tabela de lista de backup
+INSERT INTO @BackupList
     (Filename)
 VALUES
-    ('/var/opt/mssql/backup/Db_Management_20240209.bak');
+    ('Db_Management_20240209.bak');
 
-CREATE TABLE #FileDetails
+-- Tabela temporária para armazenar os detalhes dos arquivos de backup
+DECLARE @FileDetails TABLE
 (
     LogicalName NVARCHAR(128),
     PhysicalName NVARCHAR(4000),
@@ -49,32 +59,50 @@ CREATE TABLE #FileDetails
 DECLARE @Filename NVARCHAR(4000);
 DECLARE @LogicalName NVARCHAR(128);
 DECLARE @Type CHAR(1);
-DECLARE fileListCursor CURSOR FOR SELECT Filename FROM #BackupList;
+DECLARE fileListCursor CURSOR FOR SELECT Filename FROM @BackupList;
 
 OPEN fileListCursor;
 
 FETCH NEXT FROM fileListCursor INTO @Filename;
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    INSERT INTO #FileDetails
-    EXEC('RESTORE FILELISTONLY FROM DISK = ''' + @Filename + '''');
+    -- Executa RESTORE FILELISTONLY para obter os detalhes dos arquivos de backup
+    INSERT INTO @FileDetails
+    EXEC('RESTORE FILELISTONLY FROM DISK = ''' + @BackupFolder + @Filename + '''');
 
-    WHILE (SELECT TOP 1 COUNT(Type) FROM #FileDetails) > 0
+    -- Executa RESTORE HEADERONLY para obter informações sobre o backup
+    INSERT INTO #BackupHeader
+    EXEC('RESTORE HEADERONLY FROM DISK = ''' + @BackupFolder + @Filename + '''');
+
+    -- Atualiza o nome do banco de dados na lista de backup com o nome do banco de dados do header do backup
+    UPDATE @BackupList SET DatabaseName = (SELECT TOP 1 DatabaseName FROM #BackupHeader)
+    WHERE [Filename] =  @Filename;
+
+    -- Limpa a tabela temporária
+    DELETE FROM #BackupHeader;
+
+    -- Percorre os detalhes dos arquivos de backup
+    WHILE (SELECT TOP 1 COUNT(Type) FROM @FileDetails) > 0
     BEGIN
-        SELECT TOP 1 @Type = Type, @LogicalName = LogicalName FROM #FileDetails
+        SELECT TOP 1 @Type = Type, @LogicalName = LogicalName FROM @FileDetails;
 
+        -- Atualiza os nomes e caminhos dos arquivos de dados e log na lista de backup
         IF @Type = 'D'
-            UPDATE #BackupList SET DatabaseName = @LogicalName, DataName = @LogicalName, DataPhysical = @DataFolder + @LogicalName + '.mdf' WHERE [Filename] = @Filename
+            UPDATE @BackupList SET DataName = @LogicalName, DataPhysical = @DataFolder + DatabaseName + '.mdf' WHERE [Filename] = @Filename;
         ELSE IF @Type = 'L'
-            UPDATE #BackupList SET LogName = @LogicalName, LogPhysical = @DataFolder + @LogicalName + '.ldf' WHERE [Filename] = @Filename
-        
-        DELETE TOP (1) FROM #FileDetails
-    END
+            UPDATE @BackupList SET LogName = @LogicalName, LogPhysical = @DataFolder + DatabaseName + '.ldf' WHERE [Filename] = @Filename;
+
+        DELETE TOP (1) FROM @FileDetails;
+    END;
 
     FETCH NEXT FROM fileListCursor INTO @Filename;
-END
+END;
+
 CLOSE fileListCursor;
 DEALLOCATE fileListCursor;
+
+-- Exibe a lista de backup
+SELECT * FROM @BackupList;
 
 -- Loop através de cada arquivo de backup e restaurar o banco de dados
 DECLARE @BackupFile NVARCHAR(4000);
@@ -84,27 +112,28 @@ DECLARE @RestoreCommand NVARCHAR(MAX);
 
 DECLARE backup_cursor CURSOR FOR
 SELECT Filename, DatabaseName, DataName, DataPhysical, LogName, LogPhysical
-FROM #BackupList;
+FROM @BackupList;
 
 OPEN backup_cursor;
 FETCH NEXT FROM backup_cursor INTO @BackupFile, @DatabaseName, @DataName, @DataPath, @LogName, @LogPath;
 
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    SET @RestoreCommand = 'RESTORE DATABASE [' + @DatabaseName + ']'
-    SET @RestoreCommand += ' FROM DISK = ''' + @BackupFile + ''' WITH REPLACE,'
-    SET @RestoreCommand += ' MOVE ''' + @DataName + ''' TO ''' + @DataPath + ''','
+    -- Constrói o comando de restauração
+    SET @RestoreCommand = 'RESTORE DATABASE [' + @DatabaseName + ']';
+    SET @RestoreCommand += ' FROM DISK = ''' + @BackupFolder + @BackupFile + ''' WITH REPLACE,';
+    SET @RestoreCommand += ' MOVE ''' + @DataName + ''' TO ''' + @DataPath + ''',';
     SET @RestoreCommand += ' MOVE ''' + @LogName + ''' TO ''' + @LogPath + ''';';
 
+    -- Executa o comando de restauração
     EXEC sp_executesql @RestoreCommand;
     PRINT 'Banco de dados ' + @DatabaseName + ' restaurado.';
 
     FETCH NEXT FROM backup_cursor INTO @BackupFile, @DatabaseName, @DataName, @DataPath, @LogName, @LogPath;
-END
+END;
 
 CLOSE backup_cursor;
 DEALLOCATE backup_cursor;
 
--- Limpeza
-DROP TABLE #FileDetails;
-DROP TABLE #BackupList;
+-- Limpa a tabela temporária
+DROP TABLE #BackupHeader;
